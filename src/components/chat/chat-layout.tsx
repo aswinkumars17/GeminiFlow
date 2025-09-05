@@ -1,18 +1,17 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import {
   SidebarProvider,
-  Sidebar,
   SidebarInset,
-  useSidebar,
 } from '@/components/ui/sidebar';
 import { ChatSidebar } from './sidebar';
 import { ChatPanel } from './chat-panel';
 import type { Conversation, Message } from '@/lib/types';
 import { generateFirstMessage } from '@/ai/flows/generate-first-message';
 import * as ChatService from '@/services/chat-service';
+import { Bot, Lightbulb, Zap } from 'lucide-react';
+import { Button } from '../ui/button';
 
 export function ChatLayout() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -31,14 +30,14 @@ export function ChatLayout() {
       const convos = await ChatService.getConversations();
       setConversations(convos);
       if (convos.length > 0 && !activeConversationId) {
-        setActiveConversationId(convos[0].id);
+        // Don't auto-select a conversation to show the welcome screen
       }
     } catch (error) {
       console.error('Failed to load conversations:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [activeConversationId]);
+  }, []);
 
   useEffect(() => {
     loadConversations();
@@ -61,7 +60,7 @@ export function ChatLayout() {
         console.error('Failed to load messages:', error);
       }
     }
-  }, [conversations]);
+  }, [conversations, setConversations]);
 
   const generateStarterMessage = async (convo: Conversation) => {
       try {
@@ -147,6 +146,24 @@ export function ChatLayout() {
     );
   }
 
+  const handleExamplePrompt = async (prompt: string) => {
+    await createNewChat();
+    // A bit of a hack to wait for state to update.
+    setTimeout(() => {
+      // Find the new chat
+      const newChat = conversations.find(c => c.title === 'New Chat');
+      if (newChat && newChat.id === activeConversationId) {
+         // This is a simplified version of what happens in ChatPanel.
+         // In a real app, this logic should be shared.
+         const userMessagePayload: Omit<Message, 'id'> = { role: 'user', content: prompt };
+         ChatService.addMessage(newChat.id, userMessagePayload).then(userMessage => {
+            addMessage(userMessage);
+         });
+      }
+    }, 500);
+  }
+
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen bg-background text-foreground">
@@ -166,8 +183,30 @@ export function ChatLayout() {
               updateLastMessage={updateLastMessage}
             />
           ) : (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-muted-foreground">Select or create a new chat.</p>
+            <div className="flex h-full flex-col items-center justify-center p-4">
+              <div className="flex flex-col items-center text-center max-w-md mx-auto">
+                <Bot className="h-16 w-16 text-primary mb-4" />
+                <h1 className="text-3xl font-bold mb-2">Welcome to GeminiFlow</h1>
+                <p className="text-muted-foreground mb-8">
+                  Your intelligent chat companion. Start a new chat or try one of the examples below.
+                </p>
+                <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Button variant="outline" className="h-auto p-4 flex flex-col items-start gap-2" onClick={() => handleExamplePrompt('Explain quantum computing in simple terms')}>
+                    <div className="flex items-center gap-2">
+                        <Lightbulb className="w-5 h-5" />
+                        <span className="font-semibold">Explain</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground text-left">quantum computing in simple terms</p>
+                  </Button>
+                  <Button variant="outline" className="h-auto p-4 flex flex-col items-start gap-2" onClick={() => handleExamplePrompt('Write a short story about a robot who discovers music')}>
+                     <div className="flex items-center gap-2">
+                        <Zap className="w-5 h-5" />
+                        <span className="font-semibold">Create</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground text-left">a story about a robot who discovers music</p>
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </SidebarInset>
