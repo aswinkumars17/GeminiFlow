@@ -1,7 +1,7 @@
 'use server';
 
 import { ai } from '@/ai/genkit';
-import { MessageData, generate } from 'genkit/ai';
+import { generate, type MessageData } from 'genkit';
 
 // Maps our simplified Message roles to Genkit's expected roles.
 function toGenkitRole(role: 'user' | 'assistant'): 'user' | 'model' {
@@ -27,7 +27,7 @@ export async function getAIResponse(
       },
     });
 
-    return { success: true, message: response.text() };
+    return { success: true, message: response.text };
   } catch (error) {
     console.error('Error getting AI response:', error);
     return { success: false, message: 'An error occurred. Please try again.' };
