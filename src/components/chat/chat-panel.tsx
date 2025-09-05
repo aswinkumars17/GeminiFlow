@@ -1,18 +1,17 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { SendHorizonal, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Message } from './message';
 import type { Conversation, Message as MessageType } from '@/lib/types';
 import { getAIResponse } from '@/app/chat/actions';
 import { useToast } from '@/hooks/use-toast';
 import { improveMessage } from '@/ai/flows/improve-message';
 import { SidebarTrigger } from '../ui/sidebar';
+import * as ChatService from '@/services/chat-service';
 
 interface ChatPanelProps {
   conversation: Conversation;
@@ -59,28 +58,48 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage }: ChatP
     if (!input || isSending) return;
 
     setIsSending(true);
-    const userInput: MessageType = { id: uuidv4(), role: 'user', content: input };
-    addMessage(userInput);
+
+    const userMessagePayload: Omit<MessageType, 'id'> = { role: 'user', content: input };
     setInput('');
     
+    // Add user message to Firestore and local state
+    const userMessage = await ChatService.addMessage(conversation.id, userMessagePayload);
+    addMessage(userMessage);
+    
     // Add a placeholder for the assistant's response
-    const assistantPlaceholder: MessageType = { id: uuidv4(), role: 'assistant', content: '...' };
+    const assistantPlaceholder: MessageType = { id: 'placeholder', role: 'assistant', content: '...' };
     addMessage(assistantPlaceholder);
 
-    const history = [...conversation.messages, userInput].map(({ role, content }) => ({ role, content }));
+    const history = [...conversation.messages, userMessage].map(({ role, content }) => ({ role, content }));
     
     const result = await getAIResponse(history);
     
-    if (result.success) {
-      updateLastMessage(result.message);
-    } else {
-      updateLastMessage(result.message);
+    let assistantResponse = result.message;
+    if (!result.success) {
       toast({
         variant: 'destructive',
         title: 'Error',
         description: result.message,
       });
     }
+
+    // Add assistant message to Firestore
+    const assistantMessagePayload: Omit<MessageType, 'id'> = { role: 'assistant', content: assistantResponse };
+    const assistantMessage = await ChatService.addMessage(conversation.id, assistantMessagePayload);
+
+    // Replace placeholder with actual assistant message
+    updateLastMessage(assistantMessage.content);
+     setConversations(prev =>
+      prev.map(c => {
+        if (c.id === conversation.id) {
+          const newMessages = c.messages.filter(m => m.id !== 'placeholder');
+          newMessages.push(assistantMessage);
+          return { ...c, messages: newMessages };
+        }
+        return c;
+      })
+    );
+
 
     setIsSending(false);
   };

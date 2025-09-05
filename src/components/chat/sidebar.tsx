@@ -9,6 +9,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -21,6 +22,7 @@ interface ChatSidebarProps {
   activeConversationId: string | null;
   setActiveConversationId: (id: string) => void;
   createNewChat: () => void;
+  isLoading: boolean;
 }
 
 export function ChatSidebar({
@@ -28,6 +30,7 @@ export function ChatSidebar({
   activeConversationId,
   setActiveConversationId,
   createNewChat,
+  isLoading,
 }: ChatSidebarProps) {
   const { open } = useSidebar();
   
@@ -50,19 +53,27 @@ export function ChatSidebar({
       </SidebarHeader>
       <SidebarContent className="p-2">
         <SidebarMenu>
-          {conversations.map(convo => (
-            <SidebarMenuItem key={convo.id}>
-              <SidebarMenuButton
-                onClick={() => setActiveConversationId(convo.id)}
-                isActive={activeConversationId === convo.id}
-                tooltip={{ children: convo.title, side:'right' }}
-                className="justify-start"
-              >
-                <MessageSquare />
-                <span className="truncate">{convo.title}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+          {isLoading ? (
+            <>
+              <SidebarMenuSkeleton showIcon />
+              <SidebarMenuSkeleton showIcon />
+              <SidebarMenuSkeleton showIcon />
+            </>
+          ) : (
+            conversations.map(convo => (
+              <SidebarMenuItem key={convo.id}>
+                <SidebarMenuButton
+                  onClick={() => setActiveConversationId(convo.id)}
+                  isActive={activeConversationId === convo.id}
+                  tooltip={{ children: convo.title, side:'right' }}
+                  className="justify-start"
+                >
+                  <MessageSquare />
+                  <span className="truncate">{convo.title}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))
+          )}
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="p-2">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   SidebarProvider,
@@ -12,106 +12,117 @@ import { ChatSidebar } from './sidebar';
 import { ChatPanel } from './chat-panel';
 import type { Conversation, Message } from '@/lib/types';
 import { generateFirstMessage } from '@/ai/flows/generate-first-message';
-
-const initialConversations: Conversation[] = [
-  {
-    id: '1',
-    title: 'Welcome to GeminiFlow',
-    messages: [
-      {
-        id: '1',
-        role: 'assistant',
-        content:
-          "Hello! I'm GeminiFlow, your intelligent chat companion. How can I assist you today?",
-      },
-    ],
-  },
-  {
-    id: '2',
-    title: 'Plan a trip to Tokyo',
-    messages: [],
-  },
-  {
-    id: '3',
-    title: 'Brainstorm project ideas',
-    messages: [],
-  },
-];
+import * as ChatService from '@/services/chat-service';
 
 export function ChatLayout() {
-  const [conversations, setConversations] =
-    useState<Conversation[]>(initialConversations);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
-  >(conversations[0]?.id ?? null);
+  >(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const activeConversation = conversations.find(
     c => c.id === activeConversationId
   );
 
-  useEffect(() => {
-    // If an active conversation has no messages, generate a starter message.
-    const fetchStarterMessage = async (convo: Conversation) => {
-      if (convo && convo.messages.length === 0) {
-        try {
-          const { suggestedMessage } = await generateFirstMessage({
-            topic: convo.title,
-          });
-          const newMessage: Message = {
-            id: uuidv4(),
-            role: 'assistant',
-            content: suggestedMessage,
-          };
-          // Update the specific conversation with the new message
-          setConversations(prev =>
-            prev.map(c =>
-              c.id === convo.id ? { ...c, messages: [newMessage] } : c
-            )
-          );
-        } catch (error) {
-          console.error('Failed to generate first message:', error);
-           const errorMessage: Message = {
-            id: uuidv4(),
-            role: 'assistant',
-            content: "I couldn't think of a good starter... what's on your mind?",
-          };
-           setConversations(prev =>
-            prev.map(c =>
-              c.id === convo.id ? { ...c, messages: [errorMessage] } : c
-            )
-          );
-        }
+  const loadConversations = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const convos = await ChatService.getConversations();
+      setConversations(convo_s);
+      if (convo_s.length > 0 && !activeConversationId) {
+        setActiveConversationId(convo_s[0].id);
       }
-    };
-    
-    if (activeConversation) {
-        fetchStarterMessage(activeConversation);
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    } finally {
+      setIsLoading(false);
     }
-  }, [activeConversationId, activeConversation]);
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  const loadMessages = useCallback(async (convoId: string) => {
+    const convo = conversations.find(c => c.id === convoId);
+    // Only fetch if messages are not already loaded
+    if (convo && convo.messages.length === 0) {
+      try {
+        const messages = await ChatService.getConversationMessages(convoId);
+        setConversations(prev =>
+          prev.map(c => (c.id === convoId ? { ...c, messages } : c))
+        );
+        // If there are no messages, generate a starter message.
+        if (messages.length === 0) {
+            generateStarterMessage(convo);
+        }
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+      }
+    }
+  }, [conversations]);
+
+  const generateStarterMessage = async (convo: Conversation) => {
+      try {
+        const { suggestedMessage } = await generateFirstMessage({
+          topic: convo.title,
+        });
+        const newMessage = await ChatService.addMessage(convo.id, { role: 'assistant', content: suggestedMessage });
+        setConversations(prev =>
+          prev.map(c =>
+            c.id === convo.id ? { ...c, messages: [newMessage] } : c
+          )
+        );
+      } catch (error) {
+        console.error('Failed to generate first message:', error);
+        const errorMessage: Omit<Message, 'id'> = {
+          role: 'assistant',
+          content: "I couldn't think of a good starter... what's on your mind?",
+        };
+        const newErrorMessage = await ChatService.addMessage(convo.id, errorMessage);
+        setConversations(prev =>
+          prev.map(c =>
+            c.id === convo.id ? { ...c, messages: [newErrorMessage] } : c
+          )
+        );
+      }
+  };
 
 
-  const createNewChat = () => {
-    const newConversation: Conversation = {
-      id: uuidv4(),
-      title: 'New Chat',
-      messages: [],
-    };
-    setConversations(prev => [newConversation, ...prev]);
-    setActiveConversationId(newConversation.id);
+  useEffect(() => {
+    if (activeConversationId) {
+      loadMessages(activeConversationId);
+    }
+  }, [activeConversationId, loadMessages]);
+
+
+  const createNewChat = async () => {
+    try {
+      const newConversation = await ChatService.createNewChat('New Chat');
+      setConversations(prev => [newConversation, ...prev]);
+      setActiveConversationId(newConversation.id);
+    } catch (error) {
+        console.error("Failed to create new chat:", error)
+    }
   };
 
   const addMessage = (message: Message) => {
     setConversations(prev =>
       prev.map(c => {
         if (c.id === activeConversationId) {
-          // If the title is "New Chat", update it to the first user message
-          const newTitle =
-            c.title === 'New Chat' && message.role === 'user'
-              ? message.content.substring(0, 30) + '...'
-              : c.title;
+          // If the title is "New Chat", update it in Firestore
+          if (c.title === 'New Chat' && message.role === 'user') {
+            const newTitle = message.content.substring(0, 30) + '...';
+            ChatService.updateConversationTitle(c.id, newTitle);
+            return {
+              ...c,
+              title: newTitle,
+              messages: [...c.messages, message],
+            };
+          }
           return {
             ...c,
-            title: newTitle,
             messages: [...c.messages, message],
           };
         }
@@ -144,6 +155,7 @@ export function ChatLayout() {
           activeConversationId={activeConversationId}
           setActiveConversationId={setActiveConversationId}
           createNewChat={createNewChat}
+          isLoading={isLoading}
         />
         <SidebarInset>
           {activeConversation ? (
