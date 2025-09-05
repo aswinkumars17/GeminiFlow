@@ -12,14 +12,16 @@ import { useToast } from '@/hooks/use-toast';
 import { improveMessage } from '@/ai/flows/improve-message';
 import { SidebarTrigger } from '../ui/sidebar';
 import * as ChatService from '@/services/chat-service';
+import { v4 as uuidv4 } from 'uuid';
 
 interface ChatPanelProps {
   conversation: Conversation;
   addMessage: (message: MessageType) => void;
-  updateLastMessage: (content: string) => void;
+  updateLastMessage: (id: string, content: string) => void;
+  replaceMessage: (oldId: string, newMessage: MessageType) => void;
 }
 
-export function ChatPanel({ conversation, addMessage, updateLastMessage }: ChatPanelProps) {
+export function ChatPanel({ conversation, addMessage, updateLastMessage, replaceMessage }: ChatPanelProps) {
   const { toast } = useToast();
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -67,7 +69,8 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage }: ChatP
     addMessage(userMessage);
     
     // Add a placeholder for the assistant's response
-    const assistantPlaceholder: MessageType = { id: 'placeholder', role: 'assistant', content: '...' };
+    const placeholderId = uuidv4();
+    const assistantPlaceholder: MessageType = { id: placeholderId, role: 'assistant', content: '...' };
     addMessage(assistantPlaceholder);
 
     const history = [...conversation.messages, userMessage].map(({ role, content }) => ({ role, content }));
@@ -88,19 +91,7 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage }: ChatP
     const assistantMessage = await ChatService.addMessage(conversation.id, assistantMessagePayload);
     
     // Replace placeholder with actual assistant message in the UI
-    updateLastMessage(assistantMessage.content);
-    
-    // Replace placeholder with actual message in local state
-    // This is a bit of a hack, but it works for now.
-    // A better solution would be to update the message by ID.
-    // We also need to get the final message from the service, not just the content.
-    // This requires a bigger refactor.
-    addMessage(assistantMessage);
-    // This is another hack to remove the placeholder
-    conversation.messages.pop();
-    conversation.messages.pop();
-    conversation.messages.push(assistantMessage);
-
+    replaceMessage(placeholderId, assistantMessage);
 
     setIsSending(false);
   };
@@ -116,7 +107,7 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage }: ChatP
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
         <div className="p-4 md:p-6 space-y-6">
           {conversation.messages.map((message, index) => (
-            <Message key={message.id} message={message} isLast={index === conversation.messages.length - 1 && message.role === 'assistant'} />
+            <Message key={message.id} message={message} />
           ))}
         </div>
       </ScrollArea>

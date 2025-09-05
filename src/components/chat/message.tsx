@@ -8,13 +8,12 @@ import { Skeleton } from '../ui/skeleton';
 
 interface MessageProps {
   message: MessageType;
-  isLast?: boolean;
 }
 
-export function Message({ message, isLast = false }: MessageProps) {
+export function Message({ message }: MessageProps) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
-  const isLoading = isLast && message.content === '...';
+  const isLoading = message.content === '...';
 
   return (
     <div

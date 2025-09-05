@@ -12,8 +12,10 @@ import { generateFirstMessage } from '@/ai/flows/generate-first-message';
 import * as ChatService from '@/services/chat-service';
 import { Bot, Lightbulb, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 export function ChatLayout() {
+  const { toast } = useToast();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
@@ -29,15 +31,17 @@ export function ChatLayout() {
     try {
       const convos = await ChatService.getConversations();
       setConversations(convos);
-      if (convos.length > 0 && !activeConversationId) {
-        // Don't auto-select a conversation to show the welcome screen
-      }
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to load conversations.',
+      });
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     loadConversations();
@@ -60,7 +64,7 @@ export function ChatLayout() {
         console.error('Failed to load messages:', error);
       }
     }
-  }, [conversations, setConversations]);
+  }, [conversations]);
 
   const generateStarterMessage = async (convo: Conversation) => {
       try {
@@ -98,11 +102,28 @@ export function ChatLayout() {
 
   const createNewChat = async () => {
     try {
+      // Create a new conversation with a placeholder title
       const newConversation = await ChatService.createNewChat('New Chat');
+  
+      // Generate the starter message for it.
+      const { suggestedMessage } = await generateFirstMessage({
+        topic: 'a new conversation',
+      });
+      const newMessage = await ChatService.addMessage(newConversation.id, { role: 'assistant', content: suggestedMessage });
+      
+      // Update the new conversation with the message.
+      newConversation.messages = [newMessage];
+  
+      // Add it to our list of conversations and make it active.
       setConversations(prev => [newConversation, ...prev]);
       setActiveConversationId(newConversation.id);
     } catch (error) {
-        console.error("Failed to create new chat:", error)
+        console.error("Failed to create new chat:", error);
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to create a new chat. Please try again.",
+        });
     }
   };
 
@@ -110,6 +131,11 @@ export function ChatLayout() {
     setConversations(prev =>
       prev.map(c => {
         if (c.id === activeConversationId) {
+          // Check if message already exists to prevent duplicates
+          if (c.messages.some(m => m.id === message.id)) {
+            return c;
+          }
+
           // If the title is "New Chat", update it in Firestore
           if (c.title === 'New Chat' && message.role === 'user') {
             const newTitle = message.content.substring(0, 30) + '...';
@@ -130,15 +156,23 @@ export function ChatLayout() {
     );
   };
   
-  const updateLastMessage = (content: string) => {
+  const updateLastMessage = (id: string, content: string) => {
     setConversations(prev =>
       prev.map(c => {
         if (c.id === activeConversationId) {
-          const newMessages = [...c.messages];
-          const lastMessage = newMessages[newMessages.length - 1];
-          if(lastMessage && lastMessage.role === 'assistant') {
-            lastMessage.content = content;
-          }
+          const newMessages = c.messages.map(m => m.id === id ? {...m, content} : m);
+          return { ...c, messages: newMessages };
+        }
+        return c;
+      })
+    );
+  };
+  
+  const replaceMessage = (oldId: string, newMessage: Message) => {
+    setConversations(prev =>
+      prev.map(c => {
+        if (c.id === activeConversationId) {
+          const newMessages = c.messages.map(m => m.id === oldId ? newMessage : m);
           return { ...c, messages: newMessages };
         }
         return c;
@@ -146,21 +180,33 @@ export function ChatLayout() {
     );
   }
 
+
   const handleExamplePrompt = async (prompt: string) => {
-    await createNewChat();
-    // A bit of a hack to wait for state to update.
-    setTimeout(() => {
-      // Find the new chat
-      const newChat = conversations.find(c => c.title === 'New Chat');
-      if (newChat && newChat.id === activeConversationId) {
-         // This is a simplified version of what happens in ChatPanel.
-         // In a real app, this logic should be shared.
-         const userMessagePayload: Omit<Message, 'id'> = { role: 'user', content: prompt };
-         ChatService.addMessage(newChat.id, userMessagePayload).then(userMessage => {
-            addMessage(userMessage);
-         });
-      }
-    }, 500);
+    try {
+      // Create a new conversation with a placeholder title
+      const newConversation = await ChatService.createNewChat('New Chat');
+      
+      // Add it to our list of conversations and make it active *before* sending message
+      setConversations(prev => [newConversation, ...prev]);
+      setActiveConversationId(newConversation.id);
+
+      // This is a way to wait for the state to update and then send the message.
+      // A more robust solution might use a different state management approach.
+      setTimeout(async () => {
+        const userMessagePayload: Omit<Message, 'id'> = { role: 'user', content: prompt };
+        // We need to add the message to the service and then locally.
+        const userMessage = await ChatService.addMessage(newConversation.id, userMessagePayload);
+        addMessage(userMessage);
+      }, 100);
+
+    } catch (error) {
+      console.error("Failed to handle example prompt:", error);
+      toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Could not start chat from example. Please try again.",
+      });
+    }
   }
 
 
@@ -180,6 +226,7 @@ export function ChatLayout() {
               key={activeConversation.id}
               conversation={activeConversation}
               addMessage={addMessage}
+              replaceMessage={replaceMessage}
               updateLastMessage={updateLastMessage}
             />
           ) : (
