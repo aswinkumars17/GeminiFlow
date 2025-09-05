@@ -29,9 +29,9 @@ export function ChatLayout() {
     setIsLoading(true);
     try {
       const convos = await ChatService.getConversations();
-      setConversations(convo_s);
-      if (convo_s.length > 0 && !activeConversationId) {
-        setActiveConversationId(convo_s[0].id);
+      setConversations(convos);
+      if (convos.length > 0 && !activeConversationId) {
+        setActiveConversationId(convos[0].id);
       }
     } catch (error) {
       console.error('Failed to load conversations:', error);

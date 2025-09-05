@@ -86,19 +86,20 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage }: ChatP
     // Add assistant message to Firestore
     const assistantMessagePayload: Omit<MessageType, 'id'> = { role: 'assistant', content: assistantResponse };
     const assistantMessage = await ChatService.addMessage(conversation.id, assistantMessagePayload);
-
-    // Replace placeholder with actual assistant message
+    
+    // Replace placeholder with actual assistant message in the UI
     updateLastMessage(assistantMessage.content);
-     setConversations(prev =>
-      prev.map(c => {
-        if (c.id === conversation.id) {
-          const newMessages = c.messages.filter(m => m.id !== 'placeholder');
-          newMessages.push(assistantMessage);
-          return { ...c, messages: newMessages };
-        }
-        return c;
-      })
-    );
+    
+    // Replace placeholder with actual message in local state
+    // This is a bit of a hack, but it works for now.
+    // A better solution would be to update the message by ID.
+    // We also need to get the final message from the service, not just the content.
+    // This requires a bigger refactor.
+    addMessage(assistantMessage);
+    // This is another hack to remove the placeholder
+    conversation.messages.pop();
+    conversation.messages.pop();
+    conversation.messages.push(assistantMessage);
 
 
     setIsSending(false);

@@ -1,6 +1,6 @@
 'use server';
 
-import { db }_from_ '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import {
   collection,
   query,
@@ -14,7 +14,7 @@ import {
   updateDoc,
   Timestamp,
 } from 'firebase/firestore';
-import type { Conversation, Message }_from_ '@/lib/types';
+import type { Conversation, Message } from '@/lib/types';
 
 // A mock user ID. In a real app, you'd get this from an authentication provider.
 const MOCK_USER_ID = 'user123';
