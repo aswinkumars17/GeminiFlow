@@ -1,16 +1,18 @@
 'use client';
 
-import { Bot, User } from 'lucide-react';
+import { Bot, User as UserIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message as MessageType } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Skeleton } from '../ui/skeleton';
+import type { User } from 'firebase/auth';
 
 interface MessageProps {
   message: MessageType;
+  user: User;
 }
 
-export function Message({ message }: MessageProps) {
+export function Message({ message, user }: MessageProps) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const isLoading = message.content === '...';
@@ -50,9 +52,9 @@ export function Message({ message }: MessageProps) {
 
       {isUser && (
         <Avatar className="h-8 w-8">
-           <AvatarImage src="https://picsum.photos/100/100" alt="User" data-ai-hint="profile picture" />
+           <AvatarImage src={user.photoURL ?? "https://picsum.photos/100/100"} alt={user.displayName ?? 'User'} data-ai-hint="profile picture" />
           <AvatarFallback>
-            <User />
+            {user.email?.[0].toUpperCase() ?? <UserIcon />}
           </AvatarFallback>
         </Avatar>
       )}

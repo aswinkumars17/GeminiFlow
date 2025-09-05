@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   SidebarProvider,
   SidebarInset,
@@ -13,24 +14,43 @@ import * as ChatService from '@/services/chat-service';
 import { Bot, Lightbulb, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { onAuthUserChanged } from '@/services/auth-service';
+import type { User } from 'firebase/auth';
+import { Skeleton } from '../ui/skeleton';
 
 export function ChatLayout() {
   const { toast } = useToast();
+  const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthUserChanged((user) => {
+      if (user) {
+        setUser(user);
+      } else {
+        router.push('/login');
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   const activeConversation = conversations.find(
     c => c.id === activeConversationId
   );
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (uid: string) => {
     setIsLoading(true);
     try {
-      const convos = await ChatService.getConversations();
+      const convos = await ChatService.getConversations(uid);
       setConversations(convos);
+      if (convos.length > 0 && !activeConversationId) {
+        setActiveConversationId(convos[0].id);
+      }
     } catch (error) {
       console.error('Failed to load conversations:', error);
       toast({
@@ -41,18 +61,20 @@ export function ChatLayout() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, activeConversationId]);
 
   useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+    if (user) {
+      loadConversations(user.uid);
+    }
+  }, [user, loadConversations]);
 
   const loadMessages = useCallback(async (convoId: string) => {
     const convo = conversations.find(c => c.id === convoId);
     // Only fetch if messages are not already loaded
-    if (convo && convo.messages.length === 0) {
+    if (convo && user && convo.messages.length === 0) {
       try {
-        const messages = await ChatService.getConversationMessages(convoId);
+        const messages = await ChatService.getConversationMessages(user.uid, convoId);
         setConversations(prev =>
           prev.map(c => (c.id === convoId ? { ...c, messages } : c))
         );
@@ -64,14 +86,15 @@ export function ChatLayout() {
         console.error('Failed to load messages:', error);
       }
     }
-  }, [conversations]);
+  }, [conversations, user]);
 
   const generateStarterMessage = async (convo: Conversation) => {
+      if (!user) return;
       try {
         const { suggestedMessage } = await generateFirstMessage({
           topic: convo.title,
         });
-        const newMessage = await ChatService.addMessage(convo.id, { role: 'assistant', content: suggestedMessage });
+        const newMessage = await ChatService.addMessage(user.uid, convo.id, { role: 'assistant', content: suggestedMessage });
         setConversations(prev =>
           prev.map(c =>
             c.id === convo.id ? { ...c, messages: [newMessage] } : c
@@ -83,7 +106,7 @@ export function ChatLayout() {
           role: 'assistant',
           content: "I couldn't think of a good starter... what's on your mind?",
         };
-        const newErrorMessage = await ChatService.addMessage(convo.id, errorMessage);
+        const newErrorMessage = await ChatService.addMessage(user.uid, convo.id, errorMessage);
         setConversations(prev =>
           prev.map(c =>
             c.id === convo.id ? { ...c, messages: [newErrorMessage] } : c
@@ -101,15 +124,16 @@ export function ChatLayout() {
 
 
   const createNewChat = async () => {
+    if (!user) return;
     try {
       // Create a new conversation with a placeholder title
-      const newConversation = await ChatService.createNewChat('New Chat');
+      const newConversation = await ChatService.createNewChat(user.uid, 'New Chat');
   
       // Generate the starter message for it.
       const { suggestedMessage } = await generateFirstMessage({
         topic: 'a new conversation',
       });
-      const newMessage = await ChatService.addMessage(newConversation.id, { role: 'assistant', content: suggestedMessage });
+      const newMessage = await ChatService.addMessage(user.uid, newConversation.id, { role: 'assistant', content: suggestedMessage });
       
       // Update the new conversation with the message.
       newConversation.messages = [newMessage];
@@ -137,9 +161,9 @@ export function ChatLayout() {
           }
 
           // If the title is "New Chat", update it in Firestore
-          if (c.title === 'New Chat' && message.role === 'user') {
+          if (user && c.title === 'New Chat' && message.role === 'user') {
             const newTitle = message.content.substring(0, 30) + '...';
-            ChatService.updateConversationTitle(c.id, newTitle);
+            ChatService.updateConversationTitle(user.uid, c.id, newTitle);
             return {
               ...c,
               title: newTitle,
@@ -182,9 +206,10 @@ export function ChatLayout() {
 
 
   const handleExamplePrompt = async (prompt: string) => {
+    if (!user) return;
     try {
       // Create a new conversation with a placeholder title
-      const newConversation = await ChatService.createNewChat('New Chat');
+      const newConversation = await ChatService.createNewChat(user.uid, 'New Chat');
       
       // Add it to our list of conversations and make it active *before* sending message
       setConversations(prev => [newConversation, ...prev]);
@@ -193,9 +218,10 @@ export function ChatLayout() {
       // This is a way to wait for the state to update and then send the message.
       // A more robust solution might use a different state management approach.
       setTimeout(async () => {
+        if (!user) return;
         const userMessagePayload: Omit<Message, 'id'> = { role: 'user', content: prompt };
         // We need to add the message to the service and then locally.
-        const userMessage = await ChatService.addMessage(newConversation.id, userMessagePayload);
+        const userMessage = await ChatService.addMessage(user.uid, newConversation.id, userMessagePayload);
         addMessage(userMessage);
       }, 100);
 
@@ -209,11 +235,22 @@ export function ChatLayout() {
     }
   }
 
+  if (!user) {
+    return (
+        <div className="flex min-h-screen items-center justify-center bg-background">
+            <div className="flex flex-col items-center gap-4">
+                <Bot className="h-16 w-16 text-primary animate-pulse" />
+                <p className="text-muted-foreground">Authenticating...</p>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen bg-background text-foreground">
         <ChatSidebar
+          user={user}
           conversations={conversations}
           activeConversationId={activeConversationId}
           setActiveConversationId={setActiveConversationId}
@@ -224,6 +261,7 @@ export function ChatLayout() {
           {activeConversation ? (
             <ChatPanel
               key={activeConversation.id}
+              user={user}
               conversation={activeConversation}
               addMessage={addMessage}
               replaceMessage={replaceMessage}

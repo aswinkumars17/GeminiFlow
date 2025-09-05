@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import {
   Sidebar,
   SidebarHeader,
@@ -13,11 +14,15 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bot, MessageSquare, Plus, Settings } from 'lucide-react';
+import { Bot, LogOut, MessageSquare, Plus, Settings } from 'lucide-react';
 import type { Conversation } from '@/lib/types';
 import { useSidebar } from '@/components/ui/sidebar';
+import { signOutUser } from '@/services/auth-service';
+import { useToast } from '@/hooks/use-toast';
+import type { User } from 'firebase/auth';
 
 interface ChatSidebarProps {
+  user: User;
   conversations: Conversation[];
   activeConversationId: string | null;
   setActiveConversationId: (id: string) => void;
@@ -26,6 +31,7 @@ interface ChatSidebarProps {
 }
 
 export function ChatSidebar({
+  user,
   conversations,
   activeConversationId,
   setActiveConversationId,
@@ -33,6 +39,25 @@ export function ChatSidebar({
   isLoading,
 }: ChatSidebarProps) {
   const { open } = useSidebar();
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const handleSignOut = async () => {
+    const { error } = await signOutUser();
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Sign Out Error',
+        description: error,
+      });
+    } else {
+      toast({
+        title: 'Signed Out',
+        description: "You have been successfully signed out.",
+      });
+      router.push('/login');
+    }
+  };
   
   return (
     <Sidebar collapsible="icon" className="border-r">
@@ -84,15 +109,21 @@ export function ChatSidebar({
                     <span>Settings</span>
                 </SidebarMenuButton>
             </SidebarMenuItem>
+             <SidebarMenuItem>
+                <SidebarMenuButton className="justify-start" tooltip={{children: 'Sign Out', side:'right'}} onClick={handleSignOut}>
+                    <LogOut />
+                    <span>Sign Out</span>
+                </SidebarMenuButton>
+            </SidebarMenuItem>
             <SidebarMenuItem>
                 <SidebarMenuButton className="h-auto justify-start gap-3" size="lg" tooltip={{children: "User Profile", side: 'right'}}>
                     <Avatar className="h-8 w-8">
-                        <AvatarImage src="https://picsum.photos/100/100" alt="User" data-ai-hint="profile picture" />
-                        <AvatarFallback>U</AvatarFallback>
+                        <AvatarImage src={user.photoURL ?? "https://picsum.photos/100/100"} alt={user.displayName ?? 'User'} data-ai-hint="profile picture" />
+                        <AvatarFallback>{user.email?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col items-start">
-                        <span className="font-medium">User</span>
-                        <span className="text-xs text-muted-foreground">user@example.com</span>
+                        <span className="font-medium truncate">{user.displayName ?? 'User'}</span>
+                        <span className="text-xs text-muted-foreground truncate">{user.email}</span>
                     </div>
                 </SidebarMenuButton>
             </SidebarMenuItem>

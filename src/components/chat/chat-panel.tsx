@@ -13,15 +13,17 @@ import { improveMessage } from '@/ai/flows/improve-message';
 import { SidebarTrigger } from '../ui/sidebar';
 import * as ChatService from '@/services/chat-service';
 import { v4 as uuidv4 } from 'uuid';
+import type { User } from 'firebase/auth';
 
 interface ChatPanelProps {
+  user: User;
   conversation: Conversation;
   addMessage: (message: MessageType) => void;
   updateLastMessage: (id: string, content: string) => void;
   replaceMessage: (oldId: string, newMessage: MessageType) => void;
 }
 
-export function ChatPanel({ conversation, addMessage, updateLastMessage, replaceMessage }: ChatPanelProps) {
+export function ChatPanel({ user, conversation, addMessage, updateLastMessage, replaceMessage }: ChatPanelProps) {
   const { toast } = useToast();
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -65,7 +67,7 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage, replace
     setInput('');
     
     // Add user message to Firestore and local state
-    const userMessage = await ChatService.addMessage(conversation.id, userMessagePayload);
+    const userMessage = await ChatService.addMessage(user.uid, conversation.id, userMessagePayload);
     addMessage(userMessage);
     
     // Add a placeholder for the assistant's response
@@ -88,7 +90,7 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage, replace
 
     // Add assistant message to Firestore
     const assistantMessagePayload: Omit<MessageType, 'id'> = { role: 'assistant', content: assistantResponse };
-    const assistantMessage = await ChatService.addMessage(conversation.id, assistantMessagePayload);
+    const assistantMessage = await ChatService.addMessage(user.uid, conversation.id, assistantMessagePayload);
     
     // Replace placeholder with actual assistant message in the UI
     replaceMessage(placeholderId, assistantMessage);
@@ -107,7 +109,7 @@ export function ChatPanel({ conversation, addMessage, updateLastMessage, replace
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
         <div className="p-4 md:p-6 space-y-6">
           {conversation.messages.map((message, index) => (
-            <Message key={message.id} message={message} />
+            <Message key={message.id} message={message} user={user} />
           ))}
         </div>
       </ScrollArea>

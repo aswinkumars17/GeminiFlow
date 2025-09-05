@@ -1,9 +1,8 @@
 import Link from 'next/link';
-import { Bot, Mail } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GoogleIcon } from '@/components/icons';
 
 export default function Home() {
   return (
@@ -19,20 +18,18 @@ export default function Home() {
         
         <Card className="w-full">
           <CardHeader>
-            <CardTitle>Welcome</CardTitle>
-            <CardDescription>Choose an account to get started.</CardDescription>
+            <CardTitle>Get Started</CardTitle>
+            <CardDescription>Create an account or sign in to continue.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <Button asChild className="w-full" variant="outline">
-              <Link href="/chat">
-                <GoogleIcon className="mr-2 h-4 w-4" />
-                Continue with Google
+          <CardContent className="flex flex-col space-y-2">
+            <Button asChild>
+              <Link href="/login">
+                Login
               </Link>
             </Button>
-            <Button asChild className="w-full" variant="outline">
-              <Link href="/chat">
-                <Mail className="mr-2 h-4 w-4" />
-                Continue with Email
+            <Button asChild variant="outline">
+              <Link href="/signup">
+                Sign Up
               </Link>
             </Button>
           </CardContent>

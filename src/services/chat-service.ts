@@ -4,30 +4,24 @@ import { db } from '@/lib/firebase';
 import {
   collection,
   query,
-  where,
   getDocs,
   addDoc,
   orderBy,
   doc,
-  getDoc,
   serverTimestamp,
   updateDoc,
-  Timestamp,
 } from 'firebase/firestore';
 import type { Conversation, Message } from '@/lib/types';
 
-// A mock user ID. In a real app, you'd get this from an authentication provider.
-const MOCK_USER_ID = 'user123';
-
 // Firestore converters to handle Timestamps
 const messageConverter = {
-  toFirestore: (message: Message) => {
+  toFirestore: (message: Omit<Message, 'id'>) => {
     return {
       ...message,
       createdAt: serverTimestamp(),
     };
   },
-  fromFirestore: (snapshot: any, options: any) => {
+  fromFirestore: (snapshot: any, options: any): Message => {
     const data = snapshot.data(options);
     return {
       ...data,
@@ -38,7 +32,7 @@ const messageConverter = {
 };
 
 const conversationConverter = {
-  toFirestore: (conversation: Omit<Conversation, 'id'>) => {
+  toFirestore: (conversation: Omit<Conversation, 'id' | 'messages'>) => {
     return {
       ...conversation,
       createdAt: serverTimestamp(),
@@ -56,13 +50,13 @@ const conversationConverter = {
 };
 
 /**
- * Fetches all conversations for the mock user.
+ * Fetches all conversations for a specific user.
  */
-export async function getConversations(): Promise<Conversation[]> {
+export async function getConversations(userId: string): Promise<Conversation[]> {
   const conversationsRef = collection(
     db,
     'users',
-    MOCK_USER_ID,
+    userId,
     'conversations'
   ).withConverter(conversationConverter);
   const q = query(conversationsRef, orderBy('createdAt', 'desc'));
@@ -76,6 +70,7 @@ export async function getConversations(): Promise<Conversation[]> {
         "Hello! I'm GeminiFlow, your intelligent chat companion. How can I assist you today?",
     };
     const defaultConversation = await createNewChat(
+      userId,
       'Welcome to GeminiFlow',
       welcomeMessage
     );
@@ -89,12 +84,13 @@ export async function getConversations(): Promise<Conversation[]> {
  * Fetches messages for a specific conversation.
  */
 export async function getConversationMessages(
+  userId: string,
   conversationId: string
 ): Promise<Message[]> {
   const messagesRef = collection(
     db,
     'users',
-    MOCK_USER_ID,
+    userId,
     'conversations',
     conversationId,
     'messages'
@@ -108,19 +104,20 @@ export async function getConversationMessages(
  * Creates a new chat with a title and an initial message.
  */
 export async function createNewChat(
+  userId: string,
   title: string,
   initialMessage?: Omit<Message, 'id'>
 ): Promise<Conversation> {
   const conversationsRef = collection(
     db,
     'users',
-    MOCK_USER_ID,
+    userId,
     'conversations'
   );
   const newConversationRef = await addDoc(conversationsRef, {
     title,
     createdAt: serverTimestamp(),
-    userId: MOCK_USER_ID,
+    userId: userId,
   });
 
   const newConversation: Conversation = {
@@ -130,7 +127,7 @@ export async function createNewChat(
   };
 
   if (initialMessage) {
-    const newMessage = await addMessage(newConversation.id, initialMessage);
+    const newMessage = await addMessage(userId, newConversation.id, initialMessage);
     newConversation.messages.push(newMessage);
   }
 
@@ -141,21 +138,19 @@ export async function createNewChat(
  * Adds a message to a specific conversation.
  */
 export async function addMessage(
+  userId: string,
   conversationId: string,
   message: Omit<Message, 'id'>
 ): Promise<Message> {
   const messagesRef = collection(
     db,
     'users',
-    MOCK_USER_ID,
+    userId,
     'conversations',
     conversationId,
     'messages'
   );
-  const messageRef = await addDoc(messagesRef, {
-    ...message,
-    createdAt: serverTimestamp(),
-  });
+  const messageRef = await addDoc(messagesRef.withConverter(messageConverter), message);
 
   return {
     ...message,
@@ -169,13 +164,14 @@ export async function addMessage(
  * @param title - The new title.
  */
 export async function updateConversationTitle(
+  userId: string,
   conversationId: string,
   title: string
 ) {
   const convoRef = doc(
     db,
     'users',
-    MOCK_USER_ID,
+    userId,
     'conversations',
     conversationId
   );
