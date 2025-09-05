@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
